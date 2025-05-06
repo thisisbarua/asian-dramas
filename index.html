@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asian Dramas & Movies</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    .glass {
+      backdrop-filter: blur(10px);
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    .card {
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .card:hover {
+      transform: scale(1.05);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-gray-900 to-gray-800 text-white min-h-screen">
+  <!-- Navbar -->
+  <nav class="bg-black bg-opacity-40 glass p-4 shadow-md sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto flex justify-between items-center">
+      <h1 class="text-2xl font-bold">🎬 Asian Dramas & Movies</h1>
+      <a href="https://docs.google.com/spreadsheets/d/1t8vho9Ejq6Hi71-6BNkPWSBT_pw9pW0yxC6S-4CJ97c/edit" target="_blank" class="text-sm text-blue-300 hover:underline">Edit Sheet</a>
+    </div>
+  </nav>
+
+  <!-- Search Bar -->
+  <div class="max-w-6xl mx-auto mt-6 px-4">
+    <input type="text" id="searchInput" placeholder="Search dramas or genres..." class="w-full p-3 rounded-lg bg-white bg-opacity-20 backdrop-blur text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400">
+  </div>
+
+  <!-- Cards Container -->
+  <div id="cards-container" class="max-w-6xl mx-auto mt-6 grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 px-4"></div>
+
+  <script>
+    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQwwVpVtbGODGupHdFuwShFH7n-xOZExpTEwBiWOxm-AFm_w6P_f8boGebeuHltcFaFIjuh2Jf_KfOL/pub?output=csv";
+
+    let allData = [];
+
+    async function fetchSheetData() {
+      return new Promise((resolve, reject) => {
+        Papa.parse(SHEET_CSV_URL, {
+          download: true,
+          header: true,
+          complete: function(results) {
+            const filtered = results.data.filter(item => item.Name && item.URL);
+            resolve(filtered);
+          },
+          error: function(err) {
+            console.error("Sheet load failed", err);
+            reject(err);
+          }
+        });
+      });
+    }
+
+    async function fetchPoster(url) {
+      try {
+        const proxy = "https://api.allorigins.win/raw?url=";
+        const res = await fetch(proxy + encodeURIComponent(url));
+        const html = await res.text();
+
+        const match = html.match(/<meta property=\"og:image\" content=\"(.*?)\"/);
+        return match ? match[1] : null;
+      } catch {
+        return null;
+      }
+    }
+
+    async function renderCards(data) {
+      const container = document.getElementById("cards-container");
+      container.innerHTML = "";
+
+      for (const item of data) {
+        const card = document.createElement("div");
+        card.className = "card glass rounded-xl p-4 shadow-lg";
+
+        fetchPoster(item.URL).then(poster => {
+          card.innerHTML = `
+            <img src="${poster || 'https://via.placeholder.com/300x420?text=No+Image'}" alt="Poster" class="w-full h-64 object-cover rounded mb-4">
+            <h2 class="text-xl font-semibold mb-1">${item.Name}</h2>
+            <p class="text-sm text-gray-200 mb-2"><strong>Genre:</strong> ${item.Genre}</p>
+            <a href="${item.URL}" target="_blank" class="text-blue-300 hover:underline text-sm">View Details</a>
+          `;
+        });
+
+        container.appendChild(card);
+      }
+    }
+
+    // Live Search
+    document.getElementById('searchInput').addEventListener('input', function(e) {
+      const query = e.target.value.toLowerCase();
+      const filtered = allData.filter(item =>
+        item.Name.toLowerCase().includes(query) ||
+        item.Genre.toLowerCase().includes(query)
+      );
+      renderCards(filtered);
+    });
+
+    // Initialize
+    fetchSheetData().then(data => {
+      allData = data;
+      renderCards(allData);
+    });
+  </script>
+</body>
+</html>
