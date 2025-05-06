@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Asian Dramas & Movies</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    .card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.2); }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800 p-4">
+  <div class="max-w-6xl mx-auto">
+    <h1 class="text-3xl font-bold mb-6 text-center">Asian Dramas & Movies</h1>
+    <div id="error" class="text-red-600 text-center mb-4 hidden"></div>
+    <div id="cards-container" class="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"></div>
+  </div>
+
+  <script>
+    const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQwwVpVtbGODGupHdFuwShFH7n-xOZExpTEwBiWOxm-AFm_w6P_f8boGebeuHltcFaFIjuh2Jf_KfOL/pub?output=csv";
+
+    async function fetchSheetData() {
+      return new Promise((resolve, reject) => {
+        Papa.parse(SHEET_CSV_URL, {
+          download: true,
+          header: true,
+          complete: function(results) {
+            const filtered = results.data.filter(item => item.Name && item.URL);
+            resolve(filtered);
+          },
+          error: function(err) {
+            document.getElementById('error').textContent = 'Failed to parse data from Google Sheets.';
+            document.getElementById('error').classList.remove('hidden');
+            reject(err);
+          }
+        });
+      });
+    }
+
+    async function renderCards() {
+      const container = document.getElementById("cards-container");
+      const data = await fetchSheetData();
+
+      for (const item of data) {
+        const language = await fetchLanguage(item.URL);
+
+        const card = document.createElement("div");
+        card.className = "card bg-white p-4 rounded-xl shadow-sm transition hover:shadow-md";
+        card.innerHTML = `
+          <h2 class="text-xl font-semibold mb-2">${item.Name}</h2>
+          <p class="text-sm text-gray-600 mb-1"><strong>Genre:</strong> ${item.Genre}</p>
+          <p class="text-sm text-gray-600 mb-2"><strong>Language:</strong> ${language || 'Unknown'}</p>
+          <a href="${item.URL}" target="_blank" class="text-blue-500 underline text-sm">View Details</a>
+        `;
+        container.appendChild(card);
+      }
+    }
+
+    async function fetchLanguage(url) {
+      try {
+        const proxy = "https://api.allorigins.win/raw?url=";
+        const response = await fetch(proxy + encodeURIComponent(url));
+        const html = await response.text();
+
+        if (url.includes("imdb.com")) {
+          const match = html.match(/<li><span class="ipc-metadata-list-item__label">Language<\/span>.*?<a.*?>(.*?)<\/a>/);
+          return match ? match[1] : null;
+        } else if (url.includes("mydramalist.com")) {
+          const match = html.match(/<li><b>Country:<\/b>.*?>(.*?)<\//);
+          return match ? match[1] : null;
+        }
+      } catch (err) {
+        console.warn("Could not fetch language for", url);
+        return null;
+      }
+    }
+
+    renderCards();
+  </script>
+</body>
+</html>
