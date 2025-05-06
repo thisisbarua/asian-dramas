@@ -32,23 +32,23 @@
   </nav>
 
   <div class="max-w-6xl mx-auto px-4 mt-6">
-    <input id="searchInput" placeholder="Search by name or genre..." class="w-full p-3 rounded bg-white bg-opacity-10 text-white mb-6 focus:outline-none" />
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+      <input id="searchInput" placeholder="Search by name or genre..." class="w-full sm:w-1/2 p-3 rounded bg-white bg-opacity-10 text-white focus:outline-none" />
+      <select id="sortSelect" class="p-2 bg-white text-black rounded" onchange="applySort()">
+        <option value="">Sort by</option>
+        <option value="name">Name A-Z</option>
+        <option value="genre">Genre</option>
+      </select>
+    </div>
+
     <div id="cards-container" class="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+
     <div id="add-form" class="hidden mt-8">
       <h2 class="text-xl font-bold mb-2">Add New Drama/Movie</h2>
       <input id="new-name" placeholder="Name" class="block w-full p-2 mb-2 bg-white text-black"/>
       <input id="new-genre" placeholder="Genre" class="block w-full p-2 mb-2 bg-white text-black"/>
       <input id="new-url" placeholder="URL" class="block w-full p-2 mb-2 bg-white text-black"/>
       <button onclick="submitNew()" class="bg-blue-600 px-4 py-2 rounded text-white">Submit</button>
-    </div>
-  </div>
-
-  <div id="modal" class="fixed inset-0 bg-black bg-opacity-70 hidden items-center justify-center z-50">
-    <div class="glass p-6 rounded-lg max-w-md mx-auto text-white relative">
-      <button onclick="closeModal()" class="absolute top-2 right-3 text-lg">✖</button>
-      <h2 id="modal-title" class="text-xl font-bold mb-2"></h2>
-      <img id="modal-image" class="w-full h-60 object-cover rounded mb-3"/>
-      <p id="modal-description" class="text-sm text-gray-200"></p>
     </div>
   </div>
 
@@ -78,17 +78,6 @@
       } catch { return null; }
     }
 
-    async function fetchDescription(url) {
-      try {
-        const res = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(url));
-        const html = await res.text();
-        const match = html.match(/<meta name=\"description\" content=\"(.*?)\"/);
-        return match ? match[1] : "No description found.";
-      } catch {
-        return "Unable to fetch description.";
-      }
-    }
-
     async function renderCards(data) {
       const container = document.getElementById("cards-container");
       container.innerHTML = "";
@@ -99,6 +88,7 @@
         if (!item.Image && image) {
           fetch(SHEET_POST_URL, {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "updateImage", name: item.Name, image: image })
           });
         }
@@ -107,33 +97,8 @@
           <h3 class="text-lg font-semibold">${item.Name}</h3>
           <p class="text-sm text-gray-300">${item.Genre}</p>
         `;
-        card.onclick = () => openModal(item.Name, image, item.URL);
         container.appendChild(card);
       });
-    }
-
-    function openModal(title, image, url) {
-      document.getElementById("modal-title").textContent = title;
-      document.getElementById("modal-image").src = image;
-      fetchDescription(url).then(desc => {
-        document.getElementById("modal-description").textContent = desc;
-        document.getElementById("modal").classList.remove("hidden");
-        document.getElementById("modal").classList.add("flex");
-      });
-    }
-
-    function closeModal() {
-      document.getElementById("modal").classList.add("hidden");
-      document.getElementById("modal").classList.remove("flex");
-    }
-
-    function filterCards(mode) {
-      if (mode === 'all') renderCards(allData);
-      // Extend here with watched/unwatched if desired
-    }
-
-    function showAddForm() {
-      document.getElementById("add-form").classList.toggle("hidden");
     }
 
     function submitNew() {
@@ -143,8 +108,40 @@
       if (!name || !url) return alert("Name and URL are required.");
       fetch(SHEET_POST_URL, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "add", name, genre, url })
-      }).then(() => location.reload());
+      })
+      .then(res => res.text())
+      .then(() => {
+        alert("Added successfully! Reloading...");
+        location.reload();
+      })
+      .catch(err => alert("Error adding entry: " + err.message));
+    }
+
+    function showAddForm() {
+      document.getElementById("add-form").classList.toggle("hidden");
+    }
+
+    function filterCards(mode) {
+      let filtered = allData;
+      if (mode === "watched") {
+        filtered = allData.filter(item => item.Status === "Watched");
+      } else if (mode === "unwatched") {
+        filtered = allData.filter(item => item.Status !== "Watched");
+      }
+      renderCards(filtered);
+    }
+
+    function applySort() {
+      const sort = document.getElementById("sortSelect").value;
+      let sorted = [...allData];
+      if (sort === "name") {
+        sorted.sort((a, b) => a.Name.localeCompare(b.Name));
+      } else if (sort === "genre") {
+        sorted.sort((a, b) => a.Genre.localeCompare(b.Genre));
+      }
+      renderCards(sorted);
     }
 
     document.getElementById("searchInput").addEventListener("input", e => {
