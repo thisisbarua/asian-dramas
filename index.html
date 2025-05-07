@@ -1,3 +1,210 @@
 <!DOCTYPE html>
-<!-- Final index.html will be provided here with full JS logic for genre filtering, modal, and add new form -->
-<!-- Placeholder until full implementation is rendered into static file -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Asian Dramas & Movies</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    .glass { backdrop-filter: blur(12px); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); }
+    .card:hover { transform: scale(1.04); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+    .genre-pill { cursor: pointer; padding: 0.4rem 1rem; border-radius: 9999px; background: rgba(255,255,255,0.15); }
+    .genre-pill.active { background-color: #3b82f6; color: white; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-gray-900 to-black text-white min-h-screen">
+
+  <!-- Navbar -->
+  <nav class="glass sticky top-0 p-4 z-50 shadow-md">
+    <div class="max-w-6xl mx-auto flex justify-between items-center">
+      <h1 class="text-2xl font-bold">🎬 Asian Dramas & Movies</h1>
+      <div class="space-x-4">
+        <button onclick="setView('all')" class="hover:underline">Home</button>
+        <button onclick="setView('watched')" class="hover:underline">Watched</button>
+        <button onclick="setView('unwatched')" class="hover:underline">To Watch</button>
+        <button onclick="toggleAddForm()" class="hover:underline">Add New</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Genre Filter -->
+  <div id="genre-filter" class="max-w-6xl mx-auto px-4 mt-6 flex flex-wrap gap-2"></div>
+
+  <!-- Search -->
+  <div class="max-w-6xl mx-auto px-4 mt-4">
+    <input id="searchInput" type="text" placeholder="Search dramas or genres..." class="w-full p-3 rounded bg-white bg-opacity-10 text-white placeholder-gray-300 focus:outline-none mb-4" />
+  </div>
+
+  <!-- Cards -->
+  <div id="cards-container" class="max-w-6xl mx-auto grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 px-4"></div>
+
+  <!-- Add New -->
+  <div id="add-form" class="hidden max-w-xl mx-auto px-4 mt-8 mb-16">
+    <h2 class="text-xl font-bold mb-2">Add New Drama/Movie</h2>
+    <input id="new-name" placeholder="Name" class="block w-full p-2 mb-2 bg-white text-black"/>
+    <input id="new-genre" placeholder="Genre" class="block w-full p-2 mb-2 bg-white text-black"/>
+    <input id="new-url" placeholder="URL" class="block w-full p-2 mb-4 bg-white text-black"/>
+    <button id="submit-btn" onclick="submitNew()" class="bg-blue-600 px-4 py-2 rounded text-white">Submit</button>
+    <p id="submit-status" class="text-sm mt-2"></p>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50">
+    <div class="glass p-6 rounded-lg max-w-lg w-full mx-auto text-white relative">
+      <button onclick="closeModal()" class="absolute top-2 right-3 text-lg">✖</button>
+      <h2 id="modal-title" class="text-xl font-bold mb-2"></h2>
+      <img id="modal-image" class="w-full h-60 object-cover rounded mb-3"/>
+      <p id="modal-description" class="text-sm text-gray-200"></p>
+    </div>
+  </div>
+
+<script>
+const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQwwVpVtbGODGupHdFuwShFH7n-xOZExpTEwBiWOxm-AFm_w6P_f8boGebeuHltcFaFIjuh2Jf_KfOL/pub?output=csv";
+const SHEET_POST_URL = "https://script.google.com/macros/s/AKfycbwBYgmH1dwKij6qCpVWo57vyRLZs0CfP59r1rof6G4o4As_SFkiA5TlxeJUylPywQoAbQ/exec";
+
+let allData = [], filteredGenres = new Set(), currentView = "all";
+
+async function fetchSheetData() {
+  return new Promise((resolve, reject) => {
+    Papa.parse(SHEET_CSV_URL, {
+      download: true,
+      header: true,
+      complete: results => resolve(results.data.filter(d => d.Name && d.URL)),
+      error: reject
+    });
+  });
+}
+
+async function fetchPoster(url) {
+  try {
+    const res = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(url));
+    const html = await res.text();
+    const match = html.match(/<meta property=\"og:image\" content=\"(.*?)\"/);
+    return match ? match[1] : null;
+  } catch { return null; }
+}
+
+async function fetchDetails(url) {
+  try {
+    const res = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(url));
+    const html = await res.text();
+    const description = html.match(/<meta name=\"description\" content=\"(.*?)\"/)?.[1] || "No description found.";
+    return description;
+  } catch {
+    return "Unable to fetch details.";
+  }
+}
+
+function setView(view) {
+  currentView = view;
+  applyFilters();
+}
+
+function toggleAddForm() {
+  document.getElementById("add-form").classList.toggle("hidden");
+}
+
+function submitNew() {
+  const name = document.getElementById("new-name").value.trim();
+  const genre = document.getElementById("new-genre").value.trim();
+  const url = document.getElementById("new-url").value.trim();
+  const status = document.getElementById("submit-status");
+  const btn = document.getElementById("submit-btn");
+
+  if (!name || !url) return alert("Name and URL are required.");
+
+  btn.disabled = true;
+  status.textContent = "Adding...";
+  fetch(SHEET_POST_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "add", name, genre, url })
+  })
+  .then(res => res.text())
+  .then(() => {
+    status.textContent = "Successfully added!";
+    btn.disabled = false;
+    setTimeout(() => location.reload(), 1000);
+  })
+  .catch(err => {
+    status.textContent = "Failed. Try again.";
+    btn.disabled = false;
+  });
+}
+
+function openModal(title, image, url) {
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-image").src = image;
+  document.getElementById("modal").classList.remove("hidden");
+  document.getElementById("modal").classList.add("flex");
+  fetchDetails(url).then(desc => {
+    document.getElementById("modal-description").textContent = desc;
+  });
+}
+
+function closeModal() {
+  document.getElementById("modal").classList.add("hidden");
+  document.getElementById("modal").classList.remove("flex");
+}
+
+function renderGenrePills(data) {
+  const genres = new Set();
+  data.forEach(d => d.Genre?.split(",").forEach(g => genres.add(g.trim())));
+  const filterEl = document.getElementById("genre-filter");
+  filterEl.innerHTML = "";
+  [...genres].sort().forEach(genre => {
+    const pill = document.createElement("span");
+    pill.textContent = genre;
+    pill.className = "genre-pill";
+    pill.onclick = () => {
+      pill.classList.toggle("active");
+      filteredGenres.has(genre) ? filteredGenres.delete(genre) : filteredGenres.add(genre);
+      applyFilters();
+    };
+    filterEl.appendChild(pill);
+  });
+}
+
+function applyFilters() {
+  let data = [...allData];
+  if (currentView === "watched") data = data.filter(d => d.Status === "Watched");
+  if (currentView === "unwatched") data = data.filter(d => d.Status !== "Watched");
+  if (filteredGenres.size > 0) {
+    data = data.filter(d => [...filteredGenres].some(g => d.Genre?.includes(g)));
+  }
+  const query = document.getElementById("searchInput").value.toLowerCase();
+  data = data.filter(d => d.Name.toLowerCase().includes(query) || d.Genre.toLowerCase().includes(query));
+  renderCards(data);
+}
+
+function renderCards(data) {
+  const container = document.getElementById("cards-container");
+  container.innerHTML = "";
+  data.forEach(async d => {
+    const card = document.createElement("div");
+    card.className = "card glass p-4 rounded shadow cursor-pointer";
+    const img = d.Image || await fetchPoster(d.URL);
+    if (!d.Image && img) {
+      fetch(SHEET_POST_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updateImage", name: d.Name, image: img })
+      });
+    }
+    card.innerHTML = `<img src="${img || 'https://via.placeholder.com/300x400?text=No+Image'}" class="rounded mb-3 w-full h-60 object-cover"/><h3 class="text-lg font-semibold">${d.Name}</h3><p class="text-sm text-gray-300">${d.Genre}</p>`;
+    card.onclick = () => openModal(d.Name, img, d.URL);
+    container.appendChild(card);
+  });
+}
+
+document.getElementById("searchInput").addEventListener("input", applyFilters);
+
+fetchSheetData().then(data => {
+  allData = data;
+  renderGenrePills(data);
+  applyFilters();
+});
+</script>
+</body>
+</html>
